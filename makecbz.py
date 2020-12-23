@@ -59,6 +59,27 @@ def resize(img, size):
     return img
 
 
+def resize_alpha(img, size):
+    """Resize an image with alpha channel.
+
+    Parameters
+    ----------
+    img : PIL.Image
+        Image to resize.
+    size : tuple(int, int)
+        Size to resize to as (w, h) tuple.
+
+    Returns
+    -------
+    img : PIL.Image
+        Resized image.
+    """
+    img = img.convert('RGBA')
+    img = img.resize(size, resample=Image.LANCZOS)
+
+    return img
+
+
 def composite(img):
     """Alpha composite a RGBA image over a black background.
 
@@ -101,106 +122,69 @@ def get_scale(inv_aspect):
     return int(inv_aspect)+1.0
 
 
-def process_jpeg(img_file, out_file, quality=95, scale_down=False, new_size=None):
+def process_image(img_file, out_file, jpeg=False, png=False, quality=None, scale_down=False, new_size=None):
     """Process a JPEG image.
 
     Parameters
     ----------
-    img_file : str
+    img_file : dict
         Image file.
     out_file : str
         Output file.
+    jpeg : bool, optional
+        Convert images to JPEG if True. (default=False)
+    png : bool, optional
+        Convert images to PNG if True. (default=False)
     quality : int, optional
-        JPEG quality. (default=95)
+        JPEG quality or PNG compression. (default=None)
     scale_down : bool, optional
         Whether to scale image or not. (default=False)
     new_size : tuple(int, int), optional
         New size if scaling is needed. (default=None)
     """
-    if scale_down:
+    # Copy file without any changes for valid cases.
+    if img_file['format'] == 'JPEG' and not png and not scale_down:
+        copy(img_file['path'], f'{out_file}.jpg')
+    elif img_file['format'] == 'PNG' and not jpeg and not scale_down:
+        copy(img_file['path'], f'{out_file}.png')
+    elif img_file['format'] == 'GIF' and not jpeg and not png and not scale_down:
+        copy(img_file['path'], f'{out_file}.gif')
+    elif img_file['format'] == 'WEBP' and not jpeg and not png and not scale_down:
+        copy(img_file['path'], f'{out_file}.webp')
+    # Output image as JPEG.
+    elif jpeg:
+        with Image.open(img_file, 'r') as img:
+            img = composite(img)
+            if scale_down:
+                img = resize(img, new_size)
+            img.save(f'{out_file}.jpg', quality=quality, optimize=True)
+    # Output image as PNG.
+    elif png:
+        with Image.open(img_file, 'r') as img:
+            if scale_down:
+                img = resize_alpha(img, new_size)
+            img.save(f'{out_file}.png', compress_level=quality)
+    # Output image as same format.
+    elif img_file['format'] == 'JPEG':
         with Image.open(img_file, 'r') as img:
             img = resize(img, new_size)
             img.save(f'{out_file}.jpg', quality=quality, optimize=True)
+    elif img_file['format'] == 'PNG':
+        with Image.open(img_file, 'r') as img:
+            img = resize_alpha(img, new_size)
+            img.save(f'{out_file}.png', compress_level=quality)
+    elif img_file['format'] == 'GIF':
+        with Image.open(img_file, 'r') as img:
+            img = resize_alpha(img, new_size)
+            img.save(f'{out_file}.gif')
+    elif img_file['format'] == 'WEBP':
+        with Image.open(img_file, 'r') as img:
+            img = resize_alpha(img, new_size)
+            img.save(f'{out_file}.webp')
+    # Should not be reachable.
     else:
-        copy(img_file, f'{out_file}.jpg')
-
-
-def process_png(img_file, out_file, quality=95, scale_down=False, new_size=None):
-    """Process a PNG image.
-
-    Parameters
-    ----------
-    img_file : str
-        Image file.
-    out_file : str
-        Output file.
-    quality : int, optional
-        JPEG quality. (default=95)
-    scale_down : bool, optional
-        Whether to scale image or not. (default=False)
-    new_size : tuple(int, int), optional
-        New size if scaling is needed. (default=None)
-    """
-    with Image.open(img_file, 'r') as img:
-        if scale_down:
-            img = composite(img)
-            img = resize(img, new_size)
-            img.save(f'{out_file}.jpg', quality=quality, optimize=True)
-        else:
-            img = composite(img)
-            img.save(f'{out_file}.jpg', quality=quality, optimize=True)
-
-
-def process_gif(img_file, out_file, quality=95, scale_down=False, new_size=None):
-    """Process a GIF image.
-
-    Parameters
-    ----------
-    img_file : str
-        Image file.
-    out_file : str
-        Output file.
-    quality : int, optional
-        JPEG quality. (default=95)
-    scale_down : bool, optional
-        Whether to scale image or not. (default=False)
-    new_size : tuple(int, int), optional
-        New size if scaling is needed. (default=None)
-    """
-    with Image.open(img_file, 'r') as img:
-        if scale_down:
-            img = composite(img)
-            img = resize(img, new_size)
-            img.save(f'{out_file}.jpg', quality=quality, optimize=True)
-        else:
-            img = composite(img)
-            img.save(f'{out_file}.jpg', quality=quality, optimize=True)
-
-
-def process_webp(img_file, out_file, quality=95, scale_down=False, new_size=None):
-    """Process a WEBP image.
-
-    Parameters
-    ----------
-    img_file : str
-        Image file.
-    out_file : str
-        Output file.
-    quality : int, optional
-        JPEG quality. (default=95)
-    scale_down : bool, optional
-        Whether to scale image or not. (default=False)
-    new_size : tuple(int, int), optional
-        New size if scaling is needed. (default=None)
-    """
-    with Image.open(img_file, 'r') as img:
-        if scale_down:
-            img = composite(img)
-            img = resize(img, new_size)
-            img.save(f'{out_file}.jpg', quality=quality, optimize=True)
-        else:
-            img = composite(img)
-            img.save(f'{out_file}.jpg', quality=quality, optimize=True)
+        print('Error: Unreachable state')
+        return
 
 
 def check_files(file_list):
@@ -268,20 +252,43 @@ def find_duplicates(file_list):
     return dup_file_list
 
 
-def make_cbz(dir_path, h_res=3200, quality=95, no_rename=False, delete=False):
+def make_cbz(dir_path, h_res=None, jpeg=False, png=False, quality=None, no_rename=False, delete=False):
     """Make a cbz from a directory.
 
     dir_path : str
         Path to directory.
     h_res : int, optional
-        Maximum horizontal resolution. (default=3200)
+        Maximum horizontal resolution. If None no resizing is done. (default=None)
+    jpeg : bool, optional
+        Convert images to JPEG if True. (default=False)
+    png : bool, optional
+        Convert images to PNG if True. (default=False)
     quality : int, optional
-        JPEG quality. (default=95)
+        JPEG quality or PNG compression. (default=None)
     no_rename : bool, optional
         Don't rename files if True. (default=False)
     delete : bool, optional
         Delete original files and directory if True. (default=False)
     """
+    # Make sure both jpeg and png are not True.
+    if jpeg and png:
+        print('--jpeg and --png cannot be used together.')
+        return
+
+    # Check if quality parameter is valid.
+    if quality is not None:
+        if jpeg and (quality < 0 or quality > 100):
+            print('Invalid quality value. Must be between 0-100 for JPEG.')
+            return
+        if png and (quality < 0 or quality > 9):
+            print('Invalid quality/compression value. Must be between 0-9 for PNG.')
+            return
+    else:
+        if jpeg:
+            quality = 95
+        if png:
+            quality = 8
+
     # Check if output file is already present.
     out_zip_file = os.path.join(os.path.dirname(dir_path), f'{os.path.basename(dir_path)}.cbz')
     if os.path.exists(out_zip_file):
@@ -321,12 +328,16 @@ def make_cbz(dir_path, h_res=3200, quality=95, no_rename=False, delete=False):
     progress_bar = tqdm(img_files, bar_format='Processing images  |{bar:20}| {n_fmt}/{total_fmt}')
     out_idx_format = '{:0' + str(max(2, len(str(len(img_files) + 1)))) + 'd}'
     for idx, img_file in enumerate(progress_bar):
-        width, height = img_file['size']
-        scale = max(get_scale(float(height)/float(width)), 1.0)  # scale >= 1.0
-        new_height = round(h_res * scale)
-        new_width = round(float(width)/float(height)*float(new_height))
-        new_size = (new_width, new_height)
-        scale_down = height > new_height
+        if h_res is not None:
+            width, height = img_file['size']
+            scale = max(get_scale(float(height)/float(width)), 1.0)  # scale >= 1.0
+            new_height = round(h_res * scale)
+            new_width = round(float(width)/float(height)*float(new_height))
+            new_size = (new_width, new_height)
+            scale_down = height > new_height
+        else:
+            new_size = None
+            scale_down = False
 
         if no_rename:
             out_name = os.path.splitext(os.path.basename(img_file['path']))[0]
@@ -334,14 +345,7 @@ def make_cbz(dir_path, h_res=3200, quality=95, no_rename=False, delete=False):
             out_name = out_idx_format.format(idx + 1)
         out_file = os.path.join(dir_path, 'tmp', out_name)
 
-        if img_file['format'] == 'JPEG':
-            process_jpeg(img_file['path'], out_file, quality, scale_down, new_size)
-        elif img_file['format'] == 'PNG':
-            process_png(img_file['path'], out_file, quality, scale_down, new_size)
-        elif img_file['format'] == 'GIF':
-            process_gif(img_file['path'], out_file, quality, scale_down, new_size)
-        elif img_file['format'] == 'WEBP':
-            process_webp(img_file['path'], out_file, quality, scale_down, new_size)
+        process_image(img_file, out_file, jpeg, png, quality, scale_down, new_size)
 
     # Create zip file.
     img_files = [os.path.join(dir_path, 'tmp', f) for f in sorted(os.listdir(os.path.join(dir_path, 'tmp')))]
@@ -370,8 +374,11 @@ def main():
     # Parse arguments.
     parser = argparse.ArgumentParser()
     parser.add_argument('dir_paths', help='Directory/directories containing the images', nargs='+')
-    parser.add_argument('-r', '--resolution', help='Maximum horizontal resolution', type=int, default=3200)
-    parser.add_argument('-q', '--quality', help='Quality parameter for JPEG (0-100)', type=int, default=95)
+    parser.add_argument('-r', '--resolution', help='Maximum horizontal resolution', type=int, default=None)
+    parser.add_argument('-j', '--jpeg', help='Convert all image files to JPEG', action='store_true')
+    parser.add_argument('-p', '--png', help='Convert all image files to PNG', action='store_true')
+    parser.add_argument(
+        '-q', '--quality', help='Quality parameter for JPEG (0-100) or compression level for PNG (0-9)', type=int, default=None)
     parser.add_argument('-n', '--no_rename', help="Don't rename files", action='store_true')
     parser.add_argument('-d', '--delete', help='Delete original files', action='store_true')
     args = parser.parse_args()
@@ -380,7 +387,7 @@ def main():
     for dir_path in args.dir_paths:
         dir_path = os.path.normpath(dir_path)
         print(f'Processing {dir_path} ...')
-        make_cbz(dir_path, args.resolution, args.quality, args.no_rename, args.delete)
+        make_cbz(dir_path, args.resolution, args.jpeg, args.png, args.quality, args.no_rename, args.delete)
 
 
 if __name__ == '__main__':
