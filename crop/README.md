@@ -1,4 +1,4 @@
-# crop.py
+# `crop.py`
 
 A script to crop an image in an intelligent manner trying to keep the most important parts.
 

@@ -1,4 +1,4 @@
-# makecbz.py
+# `makecbz.py`
 
 This script takes a directory as input and produces a CBZ file as output.
 
