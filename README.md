@@ -5,12 +5,12 @@ This is simply a collection of scripts to make my life easier. Nearly every scri
 These scripts have been tested with Python 3, and may or may not work with Python 2.
 
 ## JavaScript Scripts
-- [`desktopWikipedia.js`](#desktopWikipedia.js)
-- [`oldReddit.js`](#oldReddit.js)
+- [`desktopWikipedia.js`](#desktopWikipediajs)
+- [`oldReddit.js`](#oldRedditjs)
 
 ## Python Scripts
-- [`crop.py`](#crop.py)
-- [`makecbz.py`](#makecbz.py)
+- [`crop.py`](#croppy)
+- [`makecbz.py`](#makecbzpy)
 
 ## `crop.py`
 A script to crop an image in an intelligent manner trying to keep the most important parts.
