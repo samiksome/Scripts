@@ -82,6 +82,7 @@ optional arguments:
     -p, --png             Convert all image files to PNG
     -q QUALITY, --quality QUALITY
                           Quality parameter for JPEG (0-100) or compression level for PNG (0-9)
+    -m, --merge_dirs      Merge images in subfolders
     -n, --no_rename       Don't rename files
     -d, --delete          Delete original files
 
@@ -92,6 +93,8 @@ The images are scaled according to their aspect ratios and the specified `--reso
 If `--jpeg` is speicified all images are converted to JPEG. Similarly if `--png` is specified all images are converted to PNG. If none is specified images are kept in their source format.
 
 `--quality` specifies the JPEG compression quality or PNG compression level for `pillow`. It must be an integer between 0 and 100 for JPEG and 0-9 for PNG.
+
+If `--merge_dirs` is specified images in sub-directories are moved to the parent directory while appending the sub-directory's name before it. Useful if the comic contains logical parts which should have a common prefix (Should generally be used along with `--no-rename` to keep said prefixes).
 
 `--no-rename` if specified keeps the original file names of the images, otherwise they are renamed as `01.jpg`, `02.jpg`, `03.jpg`, ... (the numbers are padded with as many zeros as required). `--delete` if specified deletes the original image files as well as the directory.
 

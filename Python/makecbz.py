@@ -9,7 +9,7 @@ resolution they are scaled down as well. The images are optionally renamed and p
 
 import argparse
 import os
-from shutil import copy
+from shutil import copy, move
 from zipfile import ZipFile
 
 from PIL import Image
@@ -123,7 +123,7 @@ def get_scale(inv_aspect):
 
 
 def process_image(img_file, out_file, jpeg=False, png=False, quality=None, scale_down=False, new_size=None):
-    """Process a JPEG image.
+    """Process a image.
 
     Parameters
     ----------
@@ -185,6 +185,61 @@ def process_image(img_file, out_file, jpeg=False, png=False, quality=None, scale
     else:
         print('Error: Unreachable state')
         return
+
+
+def merge_subdirs(dir_path):
+    """Merge images in sub-directories after verifying them.
+
+    Parameters
+    ----------
+    dir_path : str
+        Path to directory.
+
+    Returns
+    -------
+    bool
+        True if merge is successfull, False otherwise.
+    """
+    # Get list of sub-directories.
+    subdirs = [os.path.join(dir_path, d) for d in sorted(os.listdir(dir_path))
+               if os.path.isdir(os.path.join(dir_path, d))]
+
+    # Scan sub-directories.
+    max_imgs = 0
+    for subdir in subdirs:
+        # Get all files.
+        file_list = [os.path.join(subdir, f) for f in sorted(os.listdir(subdir))]
+
+        # Check for duplicates.
+        dup_file_list = find_duplicates(file_list)
+
+        if dup_file_list:
+            print(f'Duplicate files present in sub-directory {os.path.basename(subdir)}.')
+            for dup_files in dup_file_list:
+                print(f"\t{', '.join([os.path.basename(f) for f in dup_files])}")
+            return False
+
+        # Check if all files are supported image formats or not.
+        img_files, bad_files = check_files(file_list)
+
+        if bad_files:
+            print(f'Found {len(bad_files)} bad files in sub-directory {os.path.basename(subdir)}.')
+            for bad_file in bad_files:
+                print(f'\t{os.path.basename(bad_file[0])}: {bad_file[1]}')
+            return False
+
+        max_imgs = max(max_imgs, len(img_files))
+
+    # Move images from sub-directories to parent directory and remove sub-directory.
+    for subdir in subdirs:
+        files = [os.path.join(subdir, f) for f in sorted(os.listdir(subdir))]
+        for idx, file_ in enumerate(files):
+            format_str = '{} {:0' + str(max(2, len(str(max_imgs)))) + 'd}{}'
+            name = format_str.format(os.path.basename(subdir), idx+1, os.path.splitext(file_)[1])
+            move(file_, os.path.join(os.path.dirname(subdir), name))
+        os.rmdir(subdir)
+
+    return True
 
 
 def check_files(file_list):
@@ -252,7 +307,16 @@ def find_duplicates(file_list):
     return dup_file_list
 
 
-def make_cbz(dir_path, h_res=None, jpeg=False, png=False, quality=None, no_rename=False, delete=False):
+def make_cbz(
+    dir_path,
+    h_res=None,
+    jpeg=False,
+    png=False,
+    quality=None,
+    merge_dirs=False,
+    no_rename=False,
+    delete=False
+):
     """Make a cbz from a directory.
 
     dir_path : str
@@ -265,6 +329,8 @@ def make_cbz(dir_path, h_res=None, jpeg=False, png=False, quality=None, no_renam
         Convert images to PNG if True. (default=False)
     quality : int, optional
         JPEG quality or PNG compression. (default=None)
+    merge_dirs : bool, optional
+        Merge images in subdirectories if True. (default=False)
     no_rename : bool, optional
         Don't rename files if True. (default=False)
     delete : bool, optional
@@ -299,6 +365,12 @@ def make_cbz(dir_path, h_res=None, jpeg=False, png=False, quality=None, no_renam
             if overwrite in ['n', 'N', '']:
                 print('Not creating cbz.')
                 return
+
+    # If merge_dirs is True, merge subfolders.
+    if merge_dirs:
+        success = merge_subdirs(dir_path)
+        if not success:
+            return
 
     # Get all files.
     file_list = [os.path.join(dir_path, f) for f in sorted(os.listdir(dir_path))]
@@ -378,7 +450,12 @@ def main():
     parser.add_argument('-j', '--jpeg', help='Convert all image files to JPEG', action='store_true')
     parser.add_argument('-p', '--png', help='Convert all image files to PNG', action='store_true')
     parser.add_argument(
-        '-q', '--quality', help='Quality parameter for JPEG (0-100) or compression level for PNG (0-9)', type=int, default=None)
+        '-q', '--quality',
+        help='Quality parameter for JPEG (0-100) or compression level for PNG (0-9)',
+        type=int,
+        default=None
+    )
+    parser.add_argument('-m', '--merge_dirs', help='Merge images in subfolders', action='store_true')
     parser.add_argument('-n', '--no_rename', help="Don't rename files", action='store_true')
     parser.add_argument('-d', '--delete', help='Delete original files', action='store_true')
     args = parser.parse_args()
@@ -387,7 +464,15 @@ def main():
     for dir_path in args.dir_paths:
         dir_path = os.path.normpath(dir_path)
         print(f'Processing {dir_path} ...')
-        make_cbz(dir_path, args.resolution, args.jpeg, args.png, args.quality, args.no_rename, args.delete)
+        make_cbz(
+            dir_path,
+            args.resolution,
+            args.jpeg, args.png,
+            args.quality,
+            args.merge_dirs,
+            args.no_rename,
+            args.delete
+        )
 
 
 if __name__ == '__main__':
