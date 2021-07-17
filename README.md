@@ -18,6 +18,8 @@ This is simply a collection of scripts to make my life easier.
 ## `AutoClick.ahk`
 A simple script to automatically click repeatedly via a toggle switch. The time in between clicks can be changed by setting the SLEEP_TIME variable to appropriate value in milliseconds.
 
+---
+
 ## `crop.py`
 A script to crop an image in an intelligent manner trying to keep the most important parts.
 
