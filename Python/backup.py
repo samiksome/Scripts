@@ -84,11 +84,10 @@ def get_files(ignore=True):
     if not ignore:
         return dir_list, file_list
 
-    ignore_dirs = []
-    ignore_files = []
-
-    # Always add BAK_DIR to ignore list.
-    ignore_dirs.append(BAK_DIR)
+    with open(STORE_INFO_FILE, 'r', encoding='utf8') as file_obj:
+        store_info = json.load(file_obj)
+    ignore_dirs = store_info['ignore_dirs']
+    ignore_files = store_info['ignore_files']
 
     # Add directories and files inside ignored directories to ignore lists as well.
     for dir_path in ignore_dirs:
@@ -279,7 +278,7 @@ def init(tag='Initial snapshot.', force=False):
     with open(SNAPSHOTS_FILE, 'w', encoding='utf8') as file_obj:
         json.dump({'snapshots': [], 'snapshot_ids': [], 'curr_snapshot_id': 'None'}, file_obj)
     with open(STORE_INFO_FILE, 'w', encoding='utf8') as file_obj:
-        json.dump({'file_ids': [], 'hashes': {}}, file_obj)
+        json.dump({'file_ids': [], 'hashes': {}, 'ignore_dirs': [BAK_DIR], 'ignore_files': []}, file_obj)
 
     # Grant full permissions.
     grant_full_permissions()
@@ -489,12 +488,14 @@ def grant_full_permissions():
     # Get list of directories and files.
     dir_list, file_list = get_files(ignore=False)
 
-    # Get SID for everyone.
+    # Get SIDs.
     user, _, _ = win32security.LookupAccountName('', win32api.GetUserName())
+    everyone, _, _ = win32security.LookupAccountName('', 'Everyone')
 
     # Apply to working directory as well.
     sdesc = win32security.GetFileSecurity(WD, win32security.DACL_SECURITY_INFORMATION)
     dacl = win32security.ACL()
+    dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_READ | con.GENERIC_EXECUTE, everyone)
     dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_ALL, user)
     sdesc.SetSecurityDescriptorDacl(1, dacl, 0)
     win32security.SetFileSecurity(WD, win32security.DACL_SECURITY_INFORMATION, sdesc)
@@ -503,12 +504,14 @@ def grant_full_permissions():
     for dir_path in dir_list:
         sdesc = win32security.GetFileSecurity(dir_path, win32security.DACL_SECURITY_INFORMATION)
         dacl = win32security.ACL()
+        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_READ | con.GENERIC_EXECUTE, everyone)
         dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_ALL, user)
         sdesc.SetSecurityDescriptorDacl(1, dacl, 0)
         win32security.SetFileSecurity(dir_path, win32security.DACL_SECURITY_INFORMATION, sdesc)
     for file_path in file_list:
         sdesc = win32security.GetFileSecurity(file_path, win32security.DACL_SECURITY_INFORMATION)
         dacl = win32security.ACL()
+        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_READ | con.GENERIC_EXECUTE, everyone)
         dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_ALL, user)
         sdesc.SetSecurityDescriptorDacl(1, dacl, 0)
         win32security.SetFileSecurity(file_path, win32security.DACL_SECURITY_INFORMATION, sdesc)
@@ -521,7 +524,8 @@ def restrict_permissions():
     dir_list = dir_list[::-1]
     file_list = file_list[::-1]
 
-    # Get SID for user.
+    # Get SIDs.
+    user, _, _ = win32security.LookupAccountName('', win32api.GetUserName())
     everyone, _, _ = win32security.LookupAccountName('', 'Everyone')
 
     # Restrict permissions of all files/directories.
@@ -535,6 +539,8 @@ def restrict_permissions():
         sdesc = win32security.GetFileSecurity(dir_path, win32security.DACL_SECURITY_INFORMATION)
         dacl = win32security.ACL()
         dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_READ | con.GENERIC_EXECUTE, everyone)
+        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_ALL, user)
+        dacl.AddAccessDeniedAce(win32security.ACL_REVISION, con.DELETE | con.FILE_DELETE_CHILD, user)
         sdesc.SetSecurityDescriptorDacl(1, dacl, 0)
         win32security.SetFileSecurity(dir_path, win32security.DACL_SECURITY_INFORMATION, sdesc)
 
@@ -542,6 +548,8 @@ def restrict_permissions():
     sdesc = win32security.GetFileSecurity(WD, win32security.DACL_SECURITY_INFORMATION)
     dacl = win32security.ACL()
     dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_READ | con.GENERIC_EXECUTE, everyone)
+    dacl.AddAccessAllowedAce(win32security.ACL_REVISION, con.GENERIC_ALL, user)
+    dacl.AddAccessDeniedAce(win32security.ACL_REVISION, con.DELETE | con.FILE_DELETE_CHILD, user)
     sdesc.SetSecurityDescriptorDacl(1, dacl, 0)
     win32security.SetFileSecurity(WD, win32security.DACL_SECURITY_INFORMATION, sdesc)
 
@@ -597,25 +605,115 @@ def unlock():
     os.remove(LOCK_FILE)
 
 
+def ignore(path, type='both'):
+    """Add a path to the ignore list.
+
+    Parameters
+    ----------
+    path : str
+        Path to ignore.
+    type : str, optional
+        Type of path. 'file', 'dir' or 'both'. (default='both')
+    """
+    # If backup is locked do nothing.
+    if locked():
+        print('Operation not permitted. Backup is locked.')
+        return()
+
+    with open(STORE_INFO_FILE, 'r', encoding='utf8') as file_obj:
+        store_info = json.load(file_obj)
+
+    # Add path to ignore lists.
+    if type == 'file' or type == 'both':
+        if os.path.normpath(path) not in store_info['ignore_files']:
+            store_info['ignore_files'].append(os.path.normpath(path))
+    if type == 'dir' or type == 'both':
+        if os.path.normpath(path) not in store_info['ignore_dirs']:
+            store_info['ignore_dirs'].append(os.path.normpath(path))
+
+    with open(STORE_INFO_FILE, 'w', encoding='utf8') as file_obj:
+        json.dump(store_info, file_obj)
+
+    ignore_dirs = store_info['ignore_dirs']
+    ignore_files = store_info['ignore_files']
+
+    # Add directories and files inside ignored directories to ignore lists as well.
+    for dir_path in ignore_dirs:
+        for root, dirs, files in os.walk(dir_path):
+            ignore_dirs += [os.path.join(root, d) for d in dirs]
+            ignore_files += [os.path.join(root, f) for f in files]
+
+    # Remove ignored paths from snapshots.
+    with open(SNAPSHOTS_FILE, 'r', encoding='utf8') as file_obj:
+        snapshots = json.load(file_obj)
+
+    for idx, snapshot in enumerate(snapshots['snapshots']):
+        snapshots['snapshots'][idx]['file_list'] = [f for f in snapshot['file_list'] if f not in ignore_files]
+        snapshots['snapshots'][idx]['dir_list'] = [d for d in snapshot['dir_list'] if d not in ignore_dirs]
+        snapshots['snapshots'][idx]['file_info'] = {f: snapshot['file_info'][f]
+                                                    for f in snapshot['file_info'] if f not in ignore_files}
+
+    with open(SNAPSHOTS_FILE, 'w', encoding='utf8') as file_obj:
+        json.dump(snapshots, file_obj)
+
+    clean_store()
+
+
+def clean_store():
+    """Checks the file store and deletes any unreferenced files."""
+    # Find all referenced file ids.
+    with open(SNAPSHOTS_FILE, 'r', encoding='utf8') as file_obj:
+        snapshots = json.load(file_obj)['snapshots']
+
+    referred_file_ids = set()
+    for snapshot in snapshots:
+        referred_file_ids.update([snapshot['file_info'][f]['id'] for f in snapshot['file_info']])
+
+    with open(STORE_INFO_FILE, 'r', encoding='utf8') as file_obj:
+        store_info = json.load(file_obj)
+
+    # Delete orphaned files.
+    orphaned_file_ids = [f for f in store_info['file_ids'] if f not in referred_file_ids]
+    for file_id in orphaned_file_ids:
+        os.remove(os.path.join(BAK_FILES_DIR, file_id))
+
+    # Update store info.
+    store_info['file_ids'] = list(referred_file_ids)
+    hashes = {}
+    for hash in store_info['hashes']:
+        file_ids = [f for f in store_info['hashes'][hash] if f in referred_file_ids]
+        if file_ids:
+            hashes[hash] = file_ids
+    store_info['hashes'] = hashes
+
+    with open(STORE_INFO_FILE, 'w', encoding='utf8') as file_obj:
+        json.dump(store_info, file_obj)
+
+
 def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest='command')
 
-    parser_init = subparsers.add_parser('init', help='Initialize a backup.')
-    parser_init.add_argument('-t', '--tag', help='Initial snapshot tag.', default='Initial snapshot.')
-    parser_init.add_argument('-f', '--force', help='Overwriting existing backup.', action='store_true')
+    parser_init = subparsers.add_parser('init', help='Initialize a backup')
+    parser_init.add_argument('-t', '--tag', help='Initial snapshot tag', default='Initial snapshot.')
+    parser_init.add_argument('-f', '--force', help='Overwriting existing backup', action='store_true')
 
-    subparsers.add_parser('status', help='Show current status.')
-    subparsers.add_parser('log', help='Show snapshot log.')
+    subparsers.add_parser('status', help='Show current status')
+    subparsers.add_parser('log', help='Show snapshot log')
 
-    parser_snapshot = subparsers.add_parser('snapshot', help='Create a snapshot.')
-    parser_snapshot.add_argument('-t', '--tag', help='Snapshot tag.', default=None)
+    parser_snapshot = subparsers.add_parser('snapshot', help='Create a snapshot')
+    parser_snapshot.add_argument('-t', '--tag', help='Snapshot tag', default=None)
 
-    parser_checkout = subparsers.add_parser('checkout', help='Checkout a snapshot.')
-    parser_checkout.add_argument('snapshot_id', help='ID of snapshot to checkout.')
+    parser_checkout = subparsers.add_parser('checkout', help='Checkout a snapshot')
+    parser_checkout.add_argument('snapshot_id', help='ID of snapshot to checkout')
 
-    subparsers.add_parser('lock', help='Lock backup.')
-    subparsers.add_parser('unlock', help='Unlock backup.')
+    subparsers.add_parser('lock', help='Lock backup')
+    subparsers.add_parser('unlock', help='Unlock backup')
+
+    parser_ignore = subparsers.add_parser('ignore', help='Add a directory or file to be ignored')
+    parser_ignore.add_argument('path', help='Path to ignore')
+    parser_ignore.add_argument('-f', '--file', help='Path will be matched to a file', action='store_true')
+    parser_ignore.add_argument('-d', '--dir', help='Path will be matched to a directory', action='store_true')
 
     args = parser.parse_args()
 
@@ -635,6 +733,13 @@ def main():
         lock()
     elif args.command == 'unlock':
         unlock()
+    elif args.command == 'ignore':
+        if (args.file and args.dir) or (not args.file and not args.dir):
+            ignore(args.path, 'both')
+        elif args.file:
+            ignore(args.path, 'file')
+        elif args.dir:
+            ignore(args.path, 'dir')
 
     colorama.deinit()
 
